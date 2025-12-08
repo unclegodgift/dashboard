@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<title>Виджеты на сайте</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<h1>Интерактивные виджеты</h1>
+
+<div id="controls">
+  <button id="addWeather">Добавить погоду</button>
+  <button id="addCurrency">Добавить курс</button>
+  <button id="addFact">Добавить факт</button>
+  <button id="addTimer">Добавить таймер</button>
+  <button id="addNotes">Добавить заметки</button>
+  
+  <button id="exportConfig">Экспортировать конфигурацию</button>
+  <button id="importConfig">Импортировать конфигурацию</button>
+  <input type="file" id="importFile" style="display:none" accept=".json"/>
+</div>
+
+<div id="widgetsContainer"></div>
+
+<script src="js.js"></script>
+</body>
+</html>
