@@ -243,45 +243,282 @@ function loadWidgets() {
   }
 }
 
-// ------------- Экспорт и импорт конфигурации ---------------
+// ------------- Исправленный экспорт и импорт конфигурации ---------------
 
 // Экспортировать конфигурацию
 document.getElementById('exportConfig').onclick = () => {
-  const dataStr = JSON.stringify(widgets, null, 2);
-  const blob = new Blob([dataStr], {type: "application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'dashboard-config.json';
-  a.click();
-  URL.revokeObjectURL(url);
+    try {
+        const widgetsData = [];
+        
+        // Собираем данные о всех текущих виджетах
+        for (const widget of widgetsContainer.children) {
+            const widgetData = {
+                type: widget.dataset.type,
+                id: widget.dataset.id,
+                // Собираем состояние виджета в зависимости от типа
+                state: getWidgetState(widget)
+            };
+            widgetsData.push(widgetData);
+        }
+        
+        // Создаем полную конфигурацию
+        const config = {
+            version: '1.0',
+            exportDate: new Date().toISOString(),
+            widgets: widgetsData,
+            metadata: {
+                widgetCounter: widgetCounter
+            }
+        };
+        
+        const dataStr = JSON.stringify(config, null, 2);
+        const blob = new Blob([dataStr], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `dashboard-config-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+    } catch (err) {
+        console.error('Ошибка экспорта:', err);
+        alert('Ошибка при экспорте конфигурации: ' + err.message);
+    }
 };
+
+// Функция для получения состояния виджета
+function getWidgetState(widget) {
+    const type = widget.dataset.type;
+    const state = {};
+    
+    switch(type) {
+        case 'weather':
+            const cityInput = widget.querySelector('.city-input');
+            if (cityInput) {
+                state.city = cityInput.value;
+            }
+            break;
+        case 'currency':
+            const currencyInput = widget.querySelector('.currency-input');
+            if (currencyInput) {
+                state.pair = currencyInput.value;
+            }
+            break;
+        case 'notes':
+            const notesTextarea = widget.querySelector('.notes-textarea');
+            if (notesTextarea) {
+                state.text = notesTextarea.value;
+            }
+            break;
+        case 'timer':
+            const timerInput = widget.querySelector('.timer-input');
+            if (timerInput) {
+                state.seconds = timerInput.value;
+            }
+            break;
+        // Для 'fact' не нужно сохранять состояние
+    }
+    
+    return state;
+}
 
 // Импортировать конфигурацию
 const importFileInput = document.getElementById('importFile');
 
 document.getElementById('importConfig').onclick = () => {
-  importFileInput.click();
+    importFileInput.click();
 };
 
 importFileInput.onchange = (event) => {
-  const file = event.target.files[0];
-  if (!file) return;
+    const file = event.target.files[0];
+    if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    try {
-      const newWidgets = JSON.parse(e.target.result);
-      // Очистим текущие виджеты
-      widgets = newWidgets;
-      saveWidgets();
-      loadWidgets();
-    } catch(err) {
-      alert('Ошибка при импорте файла: ' + err.message);
-    }
-  };
-  reader.readAsText(file);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        try {
+            const config = JSON.parse(e.target.result);
+            
+            // Проверяем версию конфигурации
+            if (!config.version) {
+                alert('Файл конфигурации имеет неверный формат');
+                return;
+            }
+            
+            // Очищаем текущие виджеты
+            widgetsContainer.innerHTML = '';
+            widgetCounter = config.metadata?.widgetCounter || 0;
+            
+            // Восстанавливаем виджеты из конфигурации
+            if (config.widgets && Array.isArray(config.widgets)) {
+                config.widgets.forEach(widgetData => {
+                    restoreWidget(widgetData);
+                });
+            }
+            
+            saveWidgets();
+            alert('Конфигурация успешно импортирована!');
+            
+        } catch(err) {
+            console.error('Ошибка импорта:', err);
+            alert('Ошибка при импорте файла: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
 };
+
+// Функция восстановления виджета из конфигурации
+function restoreWidget(widgetData) {
+    widgetCounter++;
+    const widget = document.createElement('div');
+    widget.className = 'widget';
+    widget.dataset.type = widgetData.type;
+    widget.dataset.id = widgetData.id || 'widget' + widgetCounter;
+
+    // Заголовок
+    const header = document.createElement('div');
+    header.className = 'widget-header';
+
+    const title = document.createElement('div');
+    title.className = 'widget-title';
+    title.textContent = {
+        weather: 'Погода',
+        currency: 'Курс валют',
+        fact: 'Факт',
+        timer: 'Таймер',
+        notes: 'Заметки'
+    }[widgetData.type] || 'Виджет';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-btn';
+    deleteBtn.innerHTML = '&times;';
+    deleteBtn.title = 'Удалить виджет';
+    deleteBtn.onclick = () => {
+        widget.remove();
+        saveWidgets();
+    };
+
+    header.appendChild(title);
+    header.appendChild(deleteBtn);
+    widget.appendChild(header);
+
+    // Контент
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'widget-content';
+    widget.appendChild(contentDiv);
+
+    // Инициализация с восстановлением состояния
+    switch(widgetData.type) {
+        case 'weather':
+            initWeatherWidget(widget, widgetData.state);
+            break;
+        case 'currency':
+            initCurrencyWidget(widget, widgetData.state);
+            break;
+        case 'fact':
+            fetchFact(widget);
+            break;
+        case 'timer':
+            initTimerWidget(widget, widgetData.state);
+            break;
+        case 'notes':
+            initNotesWidget(widget, widgetData.state);
+            break;
+    }
+
+    widgetsContainer.appendChild(widget);
+}
+
+// Функции инициализации с восстановлением состояния
+function initWeatherWidget(widget, state) {
+    const content = widget.querySelector('.widget-content');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Введите город';
+    input.className = 'city-input';
+    
+    if (state && state.city) {
+        input.value = state.city;
+        getWeatherData(state.city, content);
+    }
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Загрузить погоду';
+    btn.onclick = () => getWeatherData(input.value, content);
+    
+    content.innerHTML = '';
+    content.appendChild(input);
+    content.appendChild(btn);
+}
+
+function initCurrencyWidget(widget, state) {
+    const content = widget.querySelector('.widget-content');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = 'Например, USD/EUR';
+    input.className = 'currency-input';
+    
+    if (state && state.pair) {
+        input.value = state.pair;
+        getCurrencyRate(state.pair, content);
+    }
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Обновить курс';
+    btn.onclick = () => getCurrencyRate(input.value, content);
+    
+    content.innerHTML = '';
+    content.appendChild(input);
+    content.appendChild(btn);
+}
+
+function initTimerWidget(widget, state) {
+    const content = widget.querySelector('.widget-content');
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.placeholder = 'Время (сек)';
+    input.className = 'timer-input';
+    
+    if (state && state.seconds) {
+        input.value = state.seconds;
+    }
+
+    const btn = document.createElement('button');
+    btn.textContent = 'Запустить';
+    btn.onclick = () => startTimer(parseInt(input.value), content);
+    
+    content.innerHTML = '';
+    content.appendChild(input);
+    content.appendChild(btn);
+}
+
+function initNotesWidget(widget, state) {
+    const content = widget.querySelector('.widget-content');
+    const textarea = document.createElement('textarea');
+    textarea.className = 'notes-textarea';
+    textarea.rows = 5;
+    textarea.placeholder = 'Здесь ваши заметки';
+    
+    if (state && state.text) {
+        textarea.value = state.text;
+    }
+    
+    const saveKey = `notes_${widget.dataset.id}`;
+    if (!state && localStorage.getItem(saveKey)) {
+        textarea.value = localStorage.getItem(saveKey);
+    }
+    
+    textarea.oninput = () => {
+        localStorage.setItem(saveKey, textarea.value);
+    };
+    
+    content.innerHTML = '';
+    content.appendChild(textarea);
+}
 
 // -------------------------------------------------------------
 
@@ -293,4 +530,5 @@ document.getElementById('addTimer').onclick=()=>addWidget('timer');
 document.getElementById('addNotes').onclick=()=>addWidget('notes');
 
 // Инициализация
+
 loadWidgets();
